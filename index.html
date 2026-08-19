@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Công Cụ Trích Xuất Dữ Liệu Ảnh (EXIF Viewer)</title>
+    <title>Trích Xuất Metadata Ảnh</title>
     
-    <!-- Thư viện hiển thị Bản đồ (Leaflet CSS & JS) -->
+    <!-- Thư viện Bản đồ Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
@@ -13,73 +13,58 @@
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
 
     <style>
-        * { box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
-        body { max-width: 900px; margin: 20px auto; padding: 0 15px; background: #f0f2f5; color: #333; }
-        .card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-        h2 { margin-top: 0; margin-bottom: 15px; color: #1a73e8; text-align: center; }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { max-width: 650px; margin: 15px auto; padding: 0 12px; background: #f4f6f8; color: #222; }
+        .card { background: #fff; padding: 18px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+        h2 { margin: 0 0 15px 0; color: #007aff; text-align: center; font-size: 20px; }
         
         .upload-area { 
-            border: 2px dashed #1a73e8; padding: 20px; text-align: center; 
-            border-radius: 10px; background: #e8f0fe; cursor: pointer; transition: 0.3s;
+            border: 2px dashed #007aff; padding: 18px; text-align: center; 
+            border-radius: 10px; background: #f0f7ff; cursor: pointer;
         }
-        .upload-area:hover { background: #d2e3fc; }
         
-        /* Cấu trúc linh hoạt, tự động thu gọn khoảng trắng */
-        .content-container { display: flex; flex-direction: column; gap: 15px; margin-top: 15px; }
+        #preview { width: 100%; max-height: 280px; object-fit: contain; border-radius: 8px; display: none; margin-top: 15px; }
         
-        .media-box { display: flex; flex-direction: column; gap: 15px; }
-        #preview { max-width: 100%; max-height: 350px; object-fit: contain; border-radius: 8px; display: none; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        #map { height: 280px; width: 100%; border-radius: 8px; display: none; }
-
-        .table-container { max-height: 350px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; display: none; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; position: sticky; top: 0; color: #555; }
-        tr:hover { background: #f1f3f4; }
-
-        .status-msg { margin-top: 15px; padding: 10px 15px; border-radius: 6px; font-weight: 500; text-align: center; display: none; }
+        .status-msg { margin-top: 12px; padding: 10px; border-radius: 6px; font-weight: 500; font-size: 14px; text-align: center; display: none; }
         .info { background: #e3f2fd; color: #0d47a1; }
         .warning { background: #fff3e0; color: #e65100; }
 
-        /* Màn hình rộng sẽ chia 2 cột gọn gàng */
-        @media (min-width: 768px) {
-            .content-container { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
-        }
+        #map-container { display: none; margin-top: 15px; }
+        #map-title { font-weight: bold; margin-bottom: 6px; font-size: 15px; }
+        #map { height: 260px; width: 100%; border-radius: 8px; border: 1px solid #ddd; }
+
+        #table-container { display: none; margin-top: 15px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; color: #555; width: 40%; }
+        tr:hover { background: #f9f9f9; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>Trích Xuất Thông Tin Dữ Liệu Ảnh</h2>
+    <h2>Trích Xuất Thông Tin Ảnh (Metadata)</h2>
     
     <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-        <p style="margin:0; font-size: 15px; font-weight: bold; color: #1a73e8;">Nhấp hoặc Kéo thả ảnh gốc vào đây (JPG / JPEG)</p>
-        <small style="color: #666;">(Lưu ý: Ảnh gửi qua Zalo, Facebook, Messenger sẽ bị xóa hết dữ liệu)</small>
+        <p style="margin:0; font-weight: bold; color: #007aff;">Chọn hoặc tải ảnh lên</p>
     </div>
     
     <input type="file" id="fileInput" accept="image/jpeg, image/jpg" style="display: none;">
 
-    <div id="status" class="status-msg info"></div>
+    <img id="preview" alt="Xem trước ảnh">
+    
+    <div id="status" class="status-msg"></div>
 
-    <div class="content-container">
-        <!-- Cột trái: Ảnh và Bản đồ -->
-        <div class="media-box">
-            <img id="preview" alt="Xem trước ảnh">
-            <div id="map"></div>
-        </div>
-        
-        <!-- Cột phải: Bảng thông tin tiếng Việt -->
-        <div id="tableWrapper" class="table-container">
-            <table id="metadataTable">
-                <thead>
-                    <tr>
-                        <th>Thông Số</th>
-                        <th>Giá Trị</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
+    <div id="map-container">
+        <div id="map-title">Vị trí chính xác trên bản đồ:</div>
+        <div id="map"></div>
+    </div>
+
+    <div id="table-container">
+        <div id="map-title">Thông tin chi tiết bức ảnh:</div>
+        <table>
+            <tbody id="metadataBody"></tbody>
+        </table>
     </div>
 </div>
 
@@ -87,93 +72,71 @@
     let map = null;
     let marker = null;
 
-    // Bộ từ điển dịch thông số EXIF tiếng Anh -> Tiếng Việt
-    const exifDictionary = {
-        "Make": "Hãng sản xuất",
-        "Model": "Tên thiết bị (Model)",
-        "Software": "Phần mềm / Hệ điều hành",
-        "DateTimeOriginal": "Thời gian bấm máy",
-        "DateTimeDigitized": "Thời gian số hóa",
-        "DateTime": "Thời gian cập nhật tệp",
-        "ExposureTime": "Tốc độ màn hình (Giây)",
-        "FNumber": "Khẩu độ (f/)",
-        "ISOSpeedRatings": "Độ nhạy sáng (ISO)",
-        "FocalLength": "Tiêu cự ống kính (mm)",
-        "FocalLengthIn35mmFilm": "Tiêu cự quy đổi 35mm",
-        "Flash": "Đèn Flash",
-        "WhiteBalance": "Cân bằng trắng",
-        "MeteringMode": "Chế độ đo sáng",
-        "ExposureProgram": "Chế độ chụp",
-        "PixelXDimension": "Chiều rộng (Pixels)",
-        "PixelYDimension": "Chiều cao (Pixels)",
-        "Orientation": "Hướng xoay ảnh",
-        "GPSLatitude": "Vĩ độ GPS",
-        "GPSLongitude": "Kinh độ GPS",
-        "GPSAltitude": "Độ cao so với mực nước biển (m)",
-        "GPSTimeStamp": "Giờ GPS (UTC)",
-        "GPSDateStamp": "Ngày GPS",
-        "SceneCaptureType": "Bối cảnh chụp",
-        "SensingMethod": "Cảm biến ảnh",
-        "ExifVersion": "Phiên bản EXIF"
+    // Từ điển dịch thông số EXIF sang Tiếng Việt
+    const tagTranslations = {
+        'Make': 'Hãng sản xuất',
+        'Model': 'Thiết bị chụp',
+        'DateTimeOriginal': 'Thời gian chụp',
+        'Software': 'Phần mềm / Hệ điều hành',
+        'ExposureTime': 'Tốc độ màn hình',
+        'FNumber': 'Khẩu độ (f-stop)',
+        'ISOSpeedRatings': 'Độ nhạy sáng (ISO)',
+        'FocalLength': 'Tiêu cự ống kính',
+        'ImageWidth': 'Chiều rộng ảnh (px)',
+        'ImageHeight': 'Chiều cao ảnh (px)',
+        'GPSLatitude': 'Vĩ độ (Latitude)',
+        'GPSLongitude': 'Kinh độ (Longitude)',
+        'GPSAltitude': 'Độ cao so với mặt nước biển'
     };
 
     document.getElementById('fileInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
 
-        // 1. Xem trước ảnh
         const preview = document.getElementById('preview');
         preview.src = URL.createObjectURL(file);
         preview.style.display = 'block';
 
         const status = document.getElementById('status');
-        const tableWrapper = document.getElementById('tableWrapper');
         status.style.display = 'block';
         status.className = 'status-msg info';
-        status.innerHTML = 'Đang phân tích thông tin dữ liệu...';
+        status.innerHTML = 'Đang trích xuất dữ liệu...';
 
-        // 2. Đọc dữ liệu EXIF
         EXIF.getData(file, function() {
-            const allMetaData = EXIF.getAllTags(this);
-            const tbody = document.querySelector('#metadataTable tbody');
+            const allTags = EXIF.getAllTags(this);
+            const tbody = document.getElementById('metadataBody');
+            const mapContainer = document.getElementById('map-container');
+            const tableContainer = document.getElementById('table-container');
+            
             tbody.innerHTML = '';
 
-            if (Object.keys(allMetaData).length === 0) {
+            if (Object.keys(allTags).length === 0) {
                 status.className = 'status-msg warning';
-                status.innerHTML = 'Bức ảnh này không chứa dữ liệu ẩn (EXIF)!';
-                tableWrapper.style.display = 'none';
-                document.getElementById('map').style.display = 'none';
+                status.innerHTML = 'Bức ảnh này không chứa thông tin Metadata!';
+                mapContainer.style.display = 'none';
+                tableContainer.style.display = 'none';
                 return;
             }
 
-            status.innerHTML = `Đã tìm thấy thông tin ảnh thành công!`;
-            tableWrapper.style.display = 'block';
+            status.innerHTML = 'Đã trích xuất thông tin thành công!';
+            tableContainer.style.display = 'block';
 
-            // 3. Đổ dữ liệu đã dịch ra bảng
-            for (let tag in allMetaData) {
-                if (tag === 'thumbnail' || tag === 'MakerNote') continue; // Bỏ qua dữ liệu thô
-                
-                // Lấy tên Tiếng Việt nếu có trong từ điển, nếu không giữ tên gốc
-                let labelVN = exifDictionary[tag] || tag;
-                let value = allMetaData[tag];
+            // Đổ dữ liệu Tiếng Việt vào bảng
+            for (let tag in tagTranslations) {
+                if (allTags[tag] !== undefined) {
+                    let val = allTags[tag];
+                    
+                    // Chuẩn hóa định dạng giá trị
+                    if (tag === 'ExposureTime' && val < 1) val = `1/${Math.round(1/val)} giây`;
+                    else if (tag === 'FNumber') val = `f/${val}`;
+                    else if (tag === 'FocalLength') val = `${val} mm`;
+                    else if (tag === 'GPSAltitude') val = `${val} mét`;
 
-                // Làm đẹp giá trị hiển thị
-                if (tag === 'Flash') {
-                    value = (value == 0 || value == 16) ? "Tắt" : "Bật/Đã đánh đèn";
-                } else if (tag === 'WhiteBalance') {
-                    value = (value == 0) ? "Tự động (Auto)" : "Thủ công (Manual)";
-                } else if (typeof value === 'object' && value !== null) {
-                    value = JSON.stringify(value);
+                    tbody.innerHTML += `<tr><th>${tagTranslations[tag]}</th><td>${val}</td></tr>`;
                 }
-
-                const row = `<tr>
-                    <td><strong>${labelVN}</strong></td>
-                    <td>${value}</td>
-                </tr>`;
-                tbody.innerHTML += row;
             }
 
-            // 4. Định vị Bản đồ
+            // Xử lý tọa độ GPS & Hiển thị Kim định vị trên Bản đồ
             const lat = EXIF.getTag(this, "GPSLatitude");
             const latRef = EXIF.getTag(this, "GPSLatitudeRef");
             const lon = EXIF.getTag(this, "GPSLongitude");
@@ -183,10 +146,12 @@
                 const latitude = convertDMSToDD(lat[0], lat[1], lat[2], latRef);
                 const longitude = convertDMSToDD(lon[0], lon[1], lon[2], lonRef);
                 
-                document.getElementById('map').style.display = 'block';
+                tbody.innerHTML += `<tr><th>Tọa độ GPS chuẩn</th><td>${latitude.toFixed(6)}, ${longitude.toFixed(6)}</td></tr>`;
+                
+                mapContainer.style.display = 'block';
                 showLocationOnMap(latitude, longitude);
             } else {
-                document.getElementById('map').style.display = 'none';
+                mapContainer.style.display = 'none';
             }
         });
     });
@@ -199,14 +164,19 @@
 
     function showLocationOnMap(lat, lng) {
         if (!map) {
-            map = L.map('map').setView([lat, lng], 15);
+            map = L.map('map').setView([lat, lng], 16);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         } else {
-            map.setView([lat, lng], 15);
+            map.setView([lat, lng], 16);
         }
 
         if (marker) map.removeLayer(marker);
-        marker = L.marker([lat, lng]).addTo(map).bindPopup('Vị trí chụp ảnh').openPopup();
+        
+        // Cắm kim định vị chính xác tại vị trí chụp
+        marker = L.marker([lat, lng]).addTo(map)
+            .bindPopup(`<b>Vị trí chụp ảnh</b><br>Tọa độ: ${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+            .openPopup();
+
         setTimeout(() => { map.invalidateSize(); }, 200);
     }
 </script>
