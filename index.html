@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trích Xuất Metadata Ảnh</title>
+    <title>Trích Xuất Metadata Ảnh & Video</title>
     
     <!-- Thư viện Bản đồ Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    <!-- Thư viện đọc dữ liệu EXIF -->
+    <!-- Thư viện đọc dữ liệu EXIF cho Ảnh -->
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
 
     <style>
@@ -23,7 +23,7 @@
             border-radius: 10px; background: #f0f7ff; cursor: pointer;
         }
         
-        #preview { width: 100%; max-height: 280px; object-fit: contain; border-radius: 8px; display: none; margin-top: 15px; }
+        #preview-img, #preview-video { width: 100%; max-height: 280px; object-fit: contain; border-radius: 8px; display: none; margin-top: 15px; }
         
         .status-msg { margin-top: 12px; padding: 10px; border-radius: 6px; font-weight: 500; font-size: 14px; text-align: center; display: none; }
         .info { background: #e3f2fd; color: #0d47a1; }
@@ -43,15 +43,16 @@
 <body>
 
 <div class="card">
-    <h2>Trích Xuất Thông Tin Ảnh (Metadata)</h2>
+    <h2>Trích Xuất Thông Tin Ảnh & Video</h2>
     
     <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-        <p style="margin:0; font-weight: bold; color: #007aff;">Chọn hoặc tải ảnh lên</p>
+        <p style="margin:0; font-weight: bold; color: #007aff;">Chọn tệp Ảnh (JPG) hoặc Video gốc (MP4/MOV)</p>
     </div>
     
-    <input type="file" id="fileInput" accept="image/jpeg, image/jpg" style="display: none;">
+    <input type="file" id="fileInput" accept="image/jpeg, image/jpg, video/mp4, video/quicktime" style="display: none;">
 
-    <img id="preview" alt="Xem trước ảnh">
+    <img id="preview-img" alt="Xem trước ảnh">
+    <video id="preview-video" controls></video>
     
     <div id="status" class="status-msg"></div>
 
@@ -61,7 +62,7 @@
     </div>
 
     <div id="table-container">
-        <div id="map-title">Thông tin chi tiết bức ảnh:</div>
+        <div id="map-title">Thông tin chi tiết tệp:</div>
         <table>
             <tbody id="metadataBody"></tbody>
         </table>
@@ -72,43 +73,61 @@
     let map = null;
     let marker = null;
 
-    // Từ điển dịch thông số EXIF sang Tiếng Việt
     const tagTranslations = {
+        'FileType': 'Loại Tệp',
+        'FileName': 'Tên Tệp',
+        'FileSize': 'Dung lượng tệp',
         'Make': 'Hãng sản xuất',
-        'Model': 'Thiết bị chụp',
-        'DateTimeOriginal': 'Thời gian chụp',
+        'Model': 'Thiết bị ghi hình',
+        'DateTimeOriginal': 'Thời gian quay/chụp',
         'Software': 'Phần mềm / Hệ điều hành',
         'ExposureTime': 'Tốc độ màn hình',
         'FNumber': 'Khẩu độ (f-stop)',
         'ISOSpeedRatings': 'Độ nhạy sáng (ISO)',
-        'FocalLength': 'Tiêu cự ống kính',
-        'ImageWidth': 'Chiều rộng ảnh (px)',
-        'ImageHeight': 'Chiều cao ảnh (px)',
         'GPSLatitude': 'Vĩ độ (Latitude)',
-        'GPSLongitude': 'Kinh độ (Longitude)',
-        'GPSAltitude': 'Độ cao so với mặt nước biển'
+        'GPSLongitude': 'Kinh độ (Longitude)'
     };
 
     document.getElementById('fileInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
 
-        const preview = document.getElementById('preview');
-        preview.src = URL.createObjectURL(file);
-        preview.style.display = 'block';
-
+        const imgPreview = document.getElementById('preview-img');
+        const videoPreview = document.getElementById('preview-video');
         const status = document.getElementById('status');
+        const tbody = document.getElementById('metadataBody');
+        const mapContainer = document.getElementById('map-container');
+        const tableContainer = document.getElementById('table-container');
+
+        // Reset hiển thị
+        imgPreview.style.display = 'none';
+        videoPreview.style.display = 'none';
+        tbody.innerHTML = '';
         status.style.display = 'block';
         status.className = 'status-msg info';
-        status.innerHTML = 'Đang trích xuất dữ liệu...';
+        status.innerHTML = 'Đang phân tích tệp...';
 
+        const isVideo = file.type.startsWith('video/');
+
+        if (isVideo) {
+            videoPreview.src = URL.createObjectURL(file);
+            videoPreview.style.display = 'block';
+            parseVideoMetadata(file);
+        } else {
+            imgPreview.src = URL.createObjectURL(file);
+            imgPreview.style.display = 'block';
+            parseImageMetadata(file);
+        }
+    });
+
+    // 1. Xử lý Metadata dành cho BỨC ẢNH
+    function parseImageMetadata(file) {
         EXIF.getData(file, function() {
             const allTags = EXIF.getAllTags(this);
+            const status = document.getElementById('status');
             const tbody = document.getElementById('metadataBody');
             const mapContainer = document.getElementById('map-container');
             const tableContainer = document.getElementById('table-container');
-            
-            tbody.innerHTML = '';
 
             if (Object.keys(allTags).length === 0) {
                 status.className = 'status-msg warning';
@@ -118,25 +137,22 @@
                 return;
             }
 
-            status.innerHTML = 'Đã trích xuất thông tin thành công!';
+            status.innerHTML = 'Đã trích xuất thông tin ảnh thành công!';
             tableContainer.style.display = 'block';
 
-            // Đổ dữ liệu Tiếng Việt vào bảng
+            addTableRow('Loại Tệp', 'Hình ảnh (JPEG)');
+            addTableRow('Tên Tệp', file.name);
+            addTableRow('Dung lượng tệp', (file.size / (1024 * 1024)).toFixed(2) + ' MB');
+
             for (let tag in tagTranslations) {
                 if (allTags[tag] !== undefined) {
                     let val = allTags[tag];
-                    
-                    // Chuẩn hóa định dạng giá trị
                     if (tag === 'ExposureTime' && val < 1) val = `1/${Math.round(1/val)} giây`;
                     else if (tag === 'FNumber') val = `f/${val}`;
-                    else if (tag === 'FocalLength') val = `${val} mm`;
-                    else if (tag === 'GPSAltitude') val = `${val} mét`;
-
-                    tbody.innerHTML += `<tr><th>${tagTranslations[tag]}</th><td>${val}</td></tr>`;
+                    addTableRow(tagTranslations[tag], val);
                 }
             }
 
-            // Xử lý tọa độ GPS & Hiển thị Kim định vị trên Bản đồ
             const lat = EXIF.getTag(this, "GPSLatitude");
             const latRef = EXIF.getTag(this, "GPSLatitudeRef");
             const lon = EXIF.getTag(this, "GPSLongitude");
@@ -145,16 +161,75 @@
             if (lat && lon && latRef && lonRef) {
                 const latitude = convertDMSToDD(lat[0], lat[1], lat[2], latRef);
                 const longitude = convertDMSToDD(lon[0], lon[1], lon[2], lonRef);
-                
-                tbody.innerHTML += `<tr><th>Tọa độ GPS chuẩn</th><td>${latitude.toFixed(6)}, ${longitude.toFixed(6)}</td></tr>`;
-                
+                addTableRow('Tọa độ GPS chuẩn', `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
                 mapContainer.style.display = 'block';
                 showLocationOnMap(latitude, longitude);
             } else {
                 mapContainer.style.display = 'none';
             }
         });
-    });
+    }
+
+    // 2. Xử lý Metadata dành cho VIDEO (Trích xuất QuickTime Metadata)
+    function parseVideoMetadata(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const buffer = e.target.result;
+            const status = document.getElementById('status');
+            const tableContainer = document.getElementById('table-container');
+            const mapContainer = document.getElementById('map-container');
+
+            tableContainer.style.display = 'block';
+            addTableRow('Loại Tệp', 'Video (' + file.type + ')');
+            addTableRow('Tên Tệp', file.name);
+            addTableRow('Dung lượng tệp', (file.size / (1024 * 1024)).toFixed(2) + ' MB');
+
+            // Quét mã nhị phân tìm chuỗi GPS mã hóa trong QuickTime Atom (©xyz hoặc location)
+            const coords = extractGPSFromVideoBuffer(buffer);
+
+            if (coords) {
+                status.innerHTML = 'Đã tìm thấy tọa độ GPS trong Video!';
+                addTableRow('Tọa độ GPS chuẩn', `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`);
+                mapContainer.style.display = 'block';
+                showLocationOnMap(coords.lat, coords.lng);
+            } else {
+                status.className = 'status-msg warning';
+                status.innerHTML = 'Không tìm thấy dữ liệu GPS ẩn trong file Video này!';
+                mapContainer.style.display = 'none';
+            }
+        };
+        reader.readAsArrayBuffer(file.slice(0, 5000000)); // Đọc 5MB đầu tiên chứa metadata của video
+    }
+
+    // Thuật toán dò tọa độ nhị phân định dạng ISO 6709 trong QuickTime Metadata video
+    function extractGPSFromVideoBuffer(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let str = "";
+        
+        // Chuyển buffer sang string để quét chuỗi ISO 6709 (+21.0285+105.8542/)
+        for (let i = 0; i < bytes.length - 20; i++) {
+            if (bytes[i] === 0x2b || bytes[i] === 0x2d) { // Dấu '+' hoặc '-'
+                let matchStr = "";
+                for (let j = 0; j < 30; j++) {
+                    matchStr += String.fromCharCode(bytes[i + j]);
+                }
+                // Regex bắt chuỗi định dạng ISO 6709 chuẩn của Apple/Android (+20.1234+105.1234/)
+                const isoMatch = matchStr.match(/^([+-]\d{2}\.\d+)([+-]\d{3}\.\d+)/);
+                if (isoMatch) {
+                    return {
+                        lat: parseFloat(isoMatch[1]),
+                        lng: parseFloat(isoMatch[2])
+                    };
+                }
+            }
+        }
+        return null;
+    }
+
+    function addTableRow(label, value) {
+        const tbody = document.getElementById('metadataBody');
+        tbody.innerHTML += `<tr><th>${label}</th><td>${value}</td></tr>`;
+    }
 
     function convertDMSToDD(degrees, minutes, seconds, direction) {
         let dd = Number(degrees) + (Number(minutes) / 60) + (Number(seconds) / 3600);
@@ -171,10 +246,8 @@
         }
 
         if (marker) map.removeLayer(marker);
-        
-        // Cắm kim định vị chính xác tại vị trí chụp
         marker = L.marker([lat, lng]).addTo(map)
-            .bindPopup(`<b>Vị trí chụp ảnh</b><br>Tọa độ: ${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+            .bindPopup(`<b>Vị trí ghi hình/chụp ảnh</b><br>Tọa độ: ${lat.toFixed(5)}, ${lng.toFixed(5)}`)
             .openPopup();
 
         setTimeout(() => { map.invalidateSize(); }, 200);
